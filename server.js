@@ -1,4 +1,4 @@
-// server.js - 花東空氣品質預報服務 (使用資源代碼 aqf_p_01)
+// server.js - 花東空氣品質預報服務 (最終確認版本)
 
 const express = require('express');
 const axios = require('axios');
@@ -7,9 +7,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ======================= API 最終設定 =======================
-// 環境部開放資料平台 API v2 基礎網址
 const BASE_URL = 'https://data.moenv.gov.tw/api/v2/';
-// 🚨 修正點：改用資源代碼 'aqf_p_01' 來構建路徑，而非 Resource ID
+// 使用資源代碼 'aqf_p_01'
 const RESOURCE_CODE = 'aqf_p_01';
 // 從環境變數中讀取 API_KEY
 const API_KEY = process.env.API_KEY || ''; 
@@ -24,12 +23,11 @@ const TARGET_AREA = '花東';
  */
 app.get('/huadong-air-forecast', async (req, res) => {
     
-    // 步驟 1: 檢查 API Key 是否存在
     if (!API_KEY) {
         return res.status(500).json({ 
             status: "error",
             message: "服務配置錯誤：API Key 環境變數未設定。",
-            guidance: "請在 Zeabur 儀表板的環境變數中設定 KEY 為 API_KEY，並填入您的金鑰值。"
+            guidance: "請在 Zeabur 儀表板的環境變數中設定 KEY 為 API_KEY。"
         });
     }
 
@@ -45,18 +43,16 @@ app.get('/huadong-air-forecast', async (req, res) => {
     try {
         console.log(`-> 嘗試獲取空氣品質預報資料 from: ${API_ENDPOINT}`);
         
-        // 步驟 2: 呼叫外部 API
         const response = await axios.get(API_ENDPOINT, { params });
-        // 確保 response.data.records 存在
         const allRecords = response.data.records || [];
 
-        // 步驟 3: 篩選出 area 等於 '花東' 的紀錄
+        // 篩選出 area 等於 '花東' 的紀錄
         const huadongRecords = allRecords.filter(record => record.area === TARGET_AREA);
 
-        // 步驟 4: 整理資料 - 按發布時間排序 (最新的在前面)
+        // 整理資料 - 按發布時間排序 (最新的在前面)
         huadongRecords.sort((a, b) => new Date(b.publishtime) - new Date(a.publishtime));
 
-        // 步驟 5: 回傳結果
+        // 回傳結果
         res.json({
             status: 'success',
             source_api: API_ENDPOINT,
@@ -66,8 +62,8 @@ app.get('/huadong-air-forecast', async (req, res) => {
         });
 
     } catch (error) {
+        // 捕獲到網路或 API 呼叫錯誤
         console.error(`Error fetching air forecast data: ${error.message}`);
-        // 錯誤處理：回報給用戶端
         res.status(500).json({ 
             status: 'error',
             message: '呼叫環境部 API 時發生連線或內部錯誤。',
