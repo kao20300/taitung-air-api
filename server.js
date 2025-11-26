@@ -68,10 +68,10 @@ app.get('/taitung-air-data', async (req, res) => {
          return res.status(400).json({ error: "參考時間格式無效，請檢查 REFERENCE_TIME_STR 設定。" });
     }
 
-    // 1. 生成所有目標時間點 (參考時間點的前後 24 小時，共 49 個點)
+    // 1. 生成所有目標時間點 (參考時間點的前後 36 小時，共 73 個點)
     const allMonitorTimes = [];
-    // 從 -24 小時開始，到 +24 小時結束
-    for (let i = -24; i <= 24; i++) {
+    // 從 -36 小時開始，到 +36 小時結束
+    for (let i = -36; i <= 36; i++) {
         // .clone() 避免修改 referenceMoment
         const targetTime = referenceMoment.clone().add(i, 'hours').format('YYYY-MM-DD HH:00');
         allMonitorTimes.push(targetTime);
