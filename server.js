@@ -1,156 +1,85 @@
-// server.js
+// server.js - 花東空氣品質預報服務
 
 const express = require('express');
 const axios = require('axios');
-const moment = require('moment'); 
 
 const app = express();
-// Zeabur 會自動設定 PORT 環境變數，本機開發通常使用 3000
+// Zeabur 會自動設定 PORT 環境變數
 const PORT = process.env.PORT || 3000;
 
-// ======================= 服務與 API 設定 =======================
-const BASE_URL = 'https://data.epa.gov.tw/api/v2/aqx_p_152';
+// ======================= 新 API 設定 =======================
+// 新的基礎網址
+const BASE_URL = 'https://data.moenv.gov.tw/api/v2/';
+// 新的資料資源 ID (空氣品質預報)
+const RESOURCE_ID = '226e6d3c-4232-4ec5-aec8-688894aa1f67';
+// 從環境變數中讀取 API_KEY。請確認 Zeabur 上設定的 Key 名稱是 API_KEY
+const API_KEY = process.env.API_KEY || '0476db62-ac45-42aa-a868-9b1e57f72746'; 
 
-// 💡 從環境變數 (process.env) 中讀取 API_KEY
-const API_KEY = process.env.API_KEY || '';
-
-const SITE_NAME = '臺東';
-const COUNTY_NAME = '臺東縣';
-
-// 修正點：將參考時間設定在更早的過去 (2025-11-26 00:00)，確保主路由能獲取到數據
-const REFERENCE_TIME_STR = "2025-11-26 00:00"; 
+// 目標篩選區域 (花東空品區)
+const TARGET_AREA = '花東';
 // ==============================================================
 
 
 /**
- * 取得指定測站、指定時間的監測數據
- * @param {string} monitorDate - 格式為 'YYYY-MM-DD HH:00'
- * @returns {Promise<Object[]>}
+ * 取得空氣品質預報數據，並篩選指定區域
  */
-async function fetchDataByTime(monitorDate) {
-    // 檢查 API Key 
-    if (!API_KEY) {
-        // 如果 API Key 未設定，直接拋出錯誤，讓上層路由回報錯誤
-        throw new Error("API Key 環境變數未設置，請檢查 Zeabur/環境變數。");
-    }
-
-    const params = {
-        api_key: API_KEY,
-        sitename: SITE_NAME, 
-        county: COUNTY_NAME,
-        monitordate: monitorDate,
-        limit: 1000, 
-        format: 'json'
-    };
-
-    try {
-        console.log(`-> 嘗試獲取時間: ${monitorDate}`);
-        const response = await axios.get(BASE_URL, { params });
-        // 成功，回傳 records 列表
-        return response.data.records || [];
-    } catch (error) {
-        console.error(`Error fetching data for ${monitorDate}: ${error.message}`);
-        // 發生錯誤時回傳空陣列
-        return []; 
-    }
-}
-
-// ======================= 1. 主要 API 路由 (/taitung-air-data) =======================
-
-app.get('/taitung-air-data', async (req, res) => {
+app.get('/huadong-air-forecast', async (req, res) => {
     // 檢查 API Key 
     if (!API_KEY) {
         return res.status(500).json({ 
-            error: "服務配置錯誤：API Key 未設定。",
+            status: "error",
+            message: "服務配置錯誤：API Key 未設定。",
             guidance: "請在 Zeabur 環境變數中設定 KEY 為 API_KEY 的值。"
         });
     }
 
-    const referenceMoment = moment(REFERENCE_TIME_STR, 'YYYY-MM-DD HH:mm');
+    // 完整的 API 請求網址
+    const API_ENDPOINT = `${BASE_URL}${RESOURCE_ID}`;
 
-    if (!referenceMoment.isValid()) {
-        return res.status(400).json({ error: "參考時間格式無效，請檢查 REFERENCE_TIME_STR 設定。" });
-    }
-
-    // 1. 生成所有目標時間點 (參考時間點的前後 36 小時，共 73 個點)
-    const allMonitorTimes = [];
-    // 從 -36 小時開始，到 +36 小時結束
-    for (let i = -36; i <= 36; i++) { // <-- 修正點：擴大範圍至 ±36 小時
-        const targetTime = referenceMoment.clone().add(i, 'hours').format('YYYY-MM-DD HH:00');
-        allMonitorTimes.push(targetTime);
-    }
-    
-    // 2. 批次呼叫 API
-    console.log(`開始批次請求 ${allMonitorTimes.length} 個時間點的數據...`);
-
-    const fetchPromises = allMonitorTimes.map(time => fetchDataByTime(time));
-    const results = await Promise.allSettled(fetchPromises);
-
-    let allData = [];
-    let successfulRequests = 0;
-
-    results.forEach(result => {
-        if (result.status === 'fulfilled' && result.value.length > 0) {
-            allData = allData.concat(result.value);
-            successfulRequests++;
-        }
-    });
-
-    // 整理資料：按監測日期排序 (從最早到最晚)
-    allData.sort((a, b) => new Date(a.monitordate) - new Date(b.monitordate));
-
-    // 3. 回傳結果
-    res.json({
-        status: 'success',
-        time_range_start: allMonitorTimes[0],
-        time_range_end: allMonitorTimes[allMonitorTimes.length - 1],
-        summary: `成功取得 ${successfulRequests} 個小時，共 ${allData.length} 筆測項紀錄。`,
-        data: allData
-    });
-});
-
-// ======================= 2. 測試路由 (/test-single-record) =======================
-
-// 🚨 修正點：將測試路由獨立定義
-app.get('/test-single-record', async (req, res) => {
-    // 1. 定義測試目標：使用一個已知的過去時間點
-    const TEST_DATE = "2025-11-26 17:00"; 
-    
-    if (!API_KEY) {
-        return res.status(500).json({ error: "API Key 未設置，無法測試。" });
-    }
+    const params = {
+        api_key: API_KEY,
+        limit: 1000, 
+        format: 'json'
+        // 註: 此 API 不支援 URL 參數直接篩選 area='花東'，需在程式碼中篩選
+    };
 
     try {
-        console.log(`-> 執行單點測試：時間 ${TEST_DATE}`);
-        
-        // 呼叫 fetchDataByTime 函數
-        const records = await fetchDataByTime(TEST_DATE);
-        
-        // 過濾出 PM2.5 數據
-        const pm25Record = records.find(r => r.itemengname === 'PM2.5');
+        console.log(`-> 嘗試獲取空氣品質預報資料...`);
+        const response = await axios.get(API_ENDPOINT, { params });
+        const allRecords = response.data.records || [];
 
+        // 篩選出 area 等於 '花東' 的紀錄
+        const huadongRecords = allRecords.filter(record => record.area === TARGET_AREA);
+
+        // 整理資料：按發布時間排序
+        huadongRecords.sort((a, b) => new Date(b.publishtime) - new Date(a.publishtime));
+
+
+        // 回傳結果
         res.json({
             status: 'success',
-            test_target: `臺東測站 @ ${TEST_DATE}`,
-            // 這是最關鍵的檢查點：如果這個值大於 0，表示 API Key 有效且能獲取數據。
-            total_records_found: records.length, 
-            pm25_record: pm25Record || "未找到 PM2.5 紀錄",
-            all_records_for_test: records 
+            source_api: API_ENDPOINT,
+            filter_area: TARGET_AREA,
+            summary: `成功取得共 ${allRecords.length} 筆紀錄，其中 ${huadongRecords.length} 筆為 ${TARGET_AREA} 預報。`,
+            data: huadongRecords
         });
+
     } catch (error) {
-        console.error(`單點測試失敗: ${error.message}`);
+        console.error(`Error fetching air forecast data: ${error.message}`);
+        // 錯誤處理：特別指出可能是 Key 錯誤
         res.status(500).json({ 
             status: 'error',
-            message: '單點測試時發生錯誤',
+            message: '呼叫環保署 API 時發生錯誤，請檢查 API Key 或網路連線。',
             detail: error.message
         });
     }
 });
 
 
+// 移除舊的 /test-single-record 路由，只保留新的主路由
+
 // 啟動伺服器
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
-    console.log(`Access main endpoint: http://localhost:${PORT}/taitung-air-data`);
-    console.log(`Access test endpoint: http://localhost:${PORT}/test-single-record`);
+    console.log(`新服務啟動於: http://localhost:${PORT}/huadong-air-forecast`);
 });
