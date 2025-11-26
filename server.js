@@ -17,7 +17,7 @@ const API_KEY = process.env.API_KEY || '';
 const SITE_NAME = '臺東';
 const COUNTY_NAME = '臺東縣';
 
-// 修正點：將參考時間設定在更早的過去 (2025-11-26 00:00)，確保有數據
+// 修正點：將參考時間設定在更早的過去 (2025-11-26 00:00)，確保主路由能獲取到數據
 const REFERENCE_TIME_STR = "2025-11-26 00:00"; 
 // ==============================================================
 
@@ -28,10 +28,10 @@ const REFERENCE_TIME_STR = "2025-11-26 00:00";
  * @returns {Promise<Object[]>}
  */
 async function fetchDataByTime(monitorDate) {
-    // 檢查 API Key
+    // 檢查 API Key 
     if (!API_KEY) {
-        // 如果 API Key 未設定，直接拋出錯誤，避免呼叫外部 API
-        throw new Error("API Key 環境變數未設置。");
+        // 如果 API Key 未設定，直接拋出錯誤，讓上層路由回報錯誤
+        throw new Error("API Key 環境變數未設置，請檢查 Zeabur/環境變數。");
     }
 
     const params = {
@@ -75,7 +75,7 @@ app.get('/taitung-air-data', async (req, res) => {
     // 1. 生成所有目標時間點 (參考時間點的前後 36 小時，共 73 個點)
     const allMonitorTimes = [];
     // 從 -36 小時開始，到 +36 小時結束
-    for (let i = -36; i <= 36; i++) { 
+    for (let i = -36; i <= 36; i++) { // <-- 修正點：擴大範圍至 ±36 小時
         const targetTime = referenceMoment.clone().add(i, 'hours').format('YYYY-MM-DD HH:00');
         allMonitorTimes.push(targetTime);
     }
@@ -111,7 +111,7 @@ app.get('/taitung-air-data', async (req, res) => {
 
 // ======================= 2. 測試路由 (/test-single-record) =======================
 
-// 🚨 修正點：將測試路由獨立定義，不再嵌套
+// 🚨 修正點：將測試路由獨立定義
 app.get('/test-single-record', async (req, res) => {
     // 1. 定義測試目標：使用一個已知的過去時間點
     const TEST_DATE = "2025-11-26 17:00"; 
@@ -132,7 +132,8 @@ app.get('/test-single-record', async (req, res) => {
         res.json({
             status: 'success',
             test_target: `臺東測站 @ ${TEST_DATE}`,
-            total_records_found: records.length,
+            // 這是最關鍵的檢查點：如果這個值大於 0，表示 API Key 有效且能獲取數據。
+            total_records_found: records.length, 
             pm25_record: pm25Record || "未找到 PM2.5 紀錄",
             all_records_for_test: records 
         });
