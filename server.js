@@ -62,6 +62,67 @@ app.get('/taitung-air-data', async (req, res) => {
         });
     }
 
+
+// ==============================================================
+// 🎯 新增測試路由：用於檢查 API Key 和單點連線是否正常
+// ==============================================================
+
+app.get('/test-single-record', async (req, res) => {
+    // 1. 定義測試目標
+    const TEST_DATE = "2025-11-26 17:00"; 
+    const TEST_SITE = "臺東"; 
+    const COUNTY_NAME = '臺東縣'; // 重複定義確保可用，或使用頂部的常量
+    const BASE_URL = 'https://data.epa.gov.tw/api/v2/aqx_p_152';
+    const API_KEY = process.env.API_KEY || ''; // 確保 API Key 仍從環境變數讀取
+    
+    // 2. 準備 API 參數
+    const params = {
+        api_key: API_KEY, 
+        sitename: TEST_SITE, 
+        county: COUNTY_NAME, 
+        monitordate: TEST_DATE,
+        limit: 1000, 
+        format: 'json'
+    };
+
+    if (!API_KEY) {
+        return res.status(500).json({ error: "API Key 未設置，無法測試。" });
+    }
+
+    try {
+        console.log(`-> 執行單點測試：時間 ${TEST_DATE}`);
+        
+        // 3. 呼叫 API
+        const response = await axios.get(BASE_URL, { params });
+        const records = response.data.records || [];
+        
+        // 4. 過濾出 PM2.5 數據（可選）
+        const pm25Record = records.find(r => r.itemengname === 'PM2.5');
+
+        res.json({
+            status: 'success',
+            test_target: `臺東測站 @ ${TEST_DATE}`,
+            total_records_found: records.length,
+            pm25_record: pm25Record || "未找到 PM2.5 紀錄",
+            all_records_for_test: records // 顯示所有數據以便於診斷
+        });
+    } catch (error) {
+        console.error(`單點測試失敗: ${error.message}`);
+        res.status(500).json({ 
+            status: 'error',
+            message: '單點測試時發生錯誤',
+            detail: error.message
+        });
+    }
+});
+
+// ... app.listen(PORT, ...) 啟動伺服器
+
+
+
+
+
+
     const referenceMoment = moment(REFERENCE_TIME_STR, 'YYYY-MM-DD HH:mm');
 
     if (!referenceMoment.isValid()) {
