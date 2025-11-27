@@ -1,4 +1,5 @@
 // server.js - 花東空氣品質預報服務 (最終確認版本)
+require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
